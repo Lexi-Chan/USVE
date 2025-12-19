@@ -2,112 +2,151 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Ultra-Simple HTML Video Editor</title>
+<title>HTML Video Editor</title>
 
 <style>
 body {
   margin: 0;
+  background: #0f0f0f;
+  color: #eaeaea;
   font-family: system-ui, sans-serif;
-  background: #111;
-  color: #eee;
 }
-#top {
-  padding: 10px;
-  background: #1c1c1c;
+
+#toolbar {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  padding: 8px;
+  background: #1a1a1a;
 }
+
 button, input {
-  background: #333;
+  background: #2a2a2a;
   color: #eee;
   border: none;
   padding: 6px 10px;
 }
-button:hover { background: #555; }
-#editor {
+button:hover { background: #444; }
+
+#main {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  height: calc(100vh - 50px);
+  grid-template-rows: 1fr 140px;
+  height: calc(100vh - 42px);
 }
+
 #preview {
   display: flex;
   justify-content: center;
   align-items: center;
   background: black;
 }
+
 canvas {
   max-width: 100%;
   max-height: 100%;
 }
-#controls {
+
+#timeline {
+  background: #161616;
+  position: relative;
   padding: 10px;
-  background: #181818;
 }
-label { display: block; margin-top: 10px; }
+
+#track {
+  height: 40px;
+  background: #2b2b2b;
+  position: relative;
+}
+
+#clip {
+  position: absolute;
+  top: 5px;
+  height: 30px;
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  cursor: pointer;
+}
+
+#playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: red;
+}
+#effects {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+label {
+  display: block;
+  font-size: 12px;
+}
 </style>
 </head>
 
 <body>
 
-<div id="top">
+<div id="toolbar">
   <input type="file" id="file" accept="video/*">
   <button onclick="play()">Play</button>
   <button onclick="pause()">Pause</button>
   <button onclick="exportVideo()">Export</button>
 </div>
 
-<div id="editor">
+<div id="main">
   <div id="preview">
     <canvas id="canvas"></canvas>
   </div>
-  <div id="controls">
-    <label>Trim Start
-      <input type="range" id="trimStart" min="0" max="100" value="0">
-    </label>
-    <label>Trim End
-      <input type="range" id="trimEnd" min="0" max="100" value="100">
-    </label>
-    <label>Brightness
-      <input type="range" id="brightness" min="50" max="150" value="100">
-    </label>
+
+  <div id="timeline">
+    <div id="track">
+      <div id="clip"></div>
+      <div id="playhead"></div>
+    </div>
+
+    <div id="effects">
+      <label>VHS Strength
+        <input type="range" id="vhs" min="0" max="100" value="60">
+      </label>
+    </div>
   </div>
 </div>
 
-<video id="video" crossorigin="anonymous" style="display:none"></video>
+<video id="video" style="display:none"></video>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-let playing = false;
+const clipEl = document.getElementById("clip");
+const playhead = document.getElementById("playhead");
+
+let duration = 1;
 let start = 0;
 let end = 1;
-let brightness = 1;
+let playing = false;
+let vhsStrength = 0.6;
 
 document.getElementById("file").onchange = e => {
   video.src = URL.createObjectURL(e.target.files[0]);
   video.onloadedmetadata = () => {
+    duration = video.duration;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+    clipEl.style.left = "0%";
+    clipEl.style.width = "100%";
   };
 };
 
-document.getElementById("trimStart").oninput = e => {
-  start = e.target.value / 100;
-};
-document.getElementById("trimEnd").oninput = e => {
-  end = e.target.value / 100;
-};
-document.getElementById("brightness").oninput = e => {
-  brightness = e.target.value / 100;
+document.getElementById("vhs").oninput = e => {
+  vhsStrength = e.target.value / 100;
 };
 
 function play() {
-  if (!video.src) return;
-  video.currentTime = start * video.duration;
-  playing = true;
+  video.currentTime = start * duration;
   video.play();
+  playing = true;
   render();
 }
 
@@ -118,18 +157,87 @@ function pause() {
 
 function render() {
   if (!playing) return;
-  if (video.currentTime > end * video.duration) {
+
+  const t = video.currentTime / duration;
+  if (t > end) {
     pause();
     return;
   }
-  ctx.filter = `brightness(${brightness})`;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  playhead.style.left = (t * 100) + "%";
+
+  drawVHSFrame(video, performance.now() / 1000);
+
   requestAnimationFrame(render);
 }
 
+/* ======================
+   VHS EFFECT (REALISTIC)
+   ====================== */
+function drawVHSFrame(video, time) {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  // Horizontal wobble
+  const wobble = Math.sin(time * 8) * 4 * vhsStrength;
+
+  ctx.save();
+  ctx.translate(wobble, 0);
+  ctx.drawImage(video, 0, 0, w, h);
+  ctx.restore();
+
+  // Scanlines
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  for (let y = 0; y < h; y += 3) {
+    ctx.fillRect(0, y, w, 1);
+  }
+
+  // Noise
+  const img = ctx.getImageData(0, 0, w, h);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 30 * vhsStrength;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Color bleed
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.05 * vhsStrength;
+  ctx.drawImage(canvas, -2, 0);
+  ctx.drawImage(canvas, 2, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+}
+
+/* ======================
+   TIMELINE INTERACTION
+   ====================== */
+let dragging = false;
+
+clipEl.onmousedown = e => {
+  dragging = true;
+};
+
+window.onmousemove = e => {
+  if (!dragging) return;
+  const rect = clipEl.parentElement.getBoundingClientRect();
+  let x = (e.clientX - rect.left) / rect.width;
+  x = Math.max(0, Math.min(x, 1));
+  start = x;
+  clipEl.style.left = (x * 100) + "%";
+  clipEl.style.width = ((end - start) * 100) + "%";
+};
+
+window.onmouseup = () => dragging = false;
+
+/* ======================
+   EXPORT
+   ====================== */
 function exportVideo() {
   const stream = canvas.captureStream(60);
-  const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+  const recorder = new MediaRecorder(stream);
   const chunks = [];
 
   recorder.ondataavailable = e => chunks.push(e.data);
@@ -137,16 +245,14 @@ function exportVideo() {
     const blob = new Blob(chunks, { type: "video/webm" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "edited.webm";
+    a.download = "vhs_edit.webm";
     a.click();
   };
 
   recorder.start();
   play();
 
-  video.onended = () => {
-    recorder.stop();
-  };
+  video.onended = () => recorder.stop();
 }
 </script>
 
