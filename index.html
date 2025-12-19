@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ultra-Simple HTML Video Editor</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #111;
+  color: #eee;
+}
+#top {
+  padding: 10px;
+  background: #1c1c1c;
+  display: flex;
+  gap: 10px;
+}
+button, input {
+  background: #333;
+  color: #eee;
+  border: none;
+  padding: 6px 10px;
+}
+button:hover { background: #555; }
+#editor {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  height: calc(100vh - 50px);
+}
+#preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: black;
+}
+canvas {
+  max-width: 100%;
+  max-height: 100%;
+}
+#controls {
+  padding: 10px;
+  background: #181818;
+}
+label { display: block; margin-top: 10px; }
+</style>
+</head>
+
+<body>
+
+<div id="top">
+  <input type="file" id="file" accept="video/*">
+  <button onclick="play()">Play</button>
+  <button onclick="pause()">Pause</button>
+  <button onclick="exportVideo()">Export</button>
+</div>
+
+<div id="editor">
+  <div id="preview">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="controls">
+    <label>Trim Start
+      <input type="range" id="trimStart" min="0" max="100" value="0">
+    </label>
+    <label>Trim End
+      <input type="range" id="trimEnd" min="0" max="100" value="100">
+    </label>
+    <label>Brightness
+      <input type="range" id="brightness" min="50" max="150" value="100">
+    </label>
+  </div>
+</div>
+
+<video id="video" crossorigin="anonymous" style="display:none"></video>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let playing = false;
+let start = 0;
+let end = 1;
+let brightness = 1;
+
+document.getElementById("file").onchange = e => {
+  video.src = URL.createObjectURL(e.target.files[0]);
+  video.onloadedmetadata = () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  };
+};
+
+document.getElementById("trimStart").oninput = e => {
+  start = e.target.value / 100;
+};
+document.getElementById("trimEnd").oninput = e => {
+  end = e.target.value / 100;
+};
+document.getElementById("brightness").oninput = e => {
+  brightness = e.target.value / 100;
+};
+
+function play() {
+  if (!video.src) return;
+  video.currentTime = start * video.duration;
+  playing = true;
+  video.play();
+  render();
+}
+
+function pause() {
+  playing = false;
+  video.pause();
+}
+
+function render() {
+  if (!playing) return;
+  if (video.currentTime > end * video.duration) {
+    pause();
+    return;
+  }
+  ctx.filter = `brightness(${brightness})`;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  requestAnimationFrame(render);
+}
+
+function exportVideo() {
+  const stream = canvas.captureStream(60);
+  const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+  const chunks = [];
+
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "video/webm" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "edited.webm";
+    a.click();
+  };
+
+  recorder.start();
+  play();
+
+  video.onended = () => {
+    recorder.stop();
+  };
+}
+</script>
+
+</body>
+</html>
